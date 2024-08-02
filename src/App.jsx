@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import {
   Box,
   Button,
@@ -9,38 +10,58 @@ import {
   SimpleGrid,
   Text,
 } from '@chakra-ui/react';
+import Web3Modal from 'web3modal';
 import { Alchemy, Network } from 'alchemy-sdk';
-import { useState } from 'react';
+import { ethers } from 'ethers';
 
 function App() {
   const [userAddress, setUserAddress] = useState('');
   const [results, setResults] = useState([]);
   const [hasQueried, setHasQueried] = useState(false);
   const [tokenDataObjects, setTokenDataObjects] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [account, setAccount] = useState(null);
+
+  const connectWallet = async () => {
+    const web3Modal = new Web3Modal();
+    try {
+      const instance = await web3Modal.connect();
+      const provider = new ethers.providers.Web3Provider(instance);
+      const signer = provider.getSigner();
+      const accountAddress = await signer.getAddress();
+      setAccount(accountAddress);
+    } catch (err) {
+      setError('Failed to connect wallet');
+    }
+  };
 
   async function getNFTsForOwner() {
-    const config = {
-      apiKey: '<-- COPY-PASTE YOUR ALCHEMY API KEY HERE -->',
-      network: Network.ETH_MAINNET,
-    };
+    setLoading(true);
+    setError(null);
+    try {
+      const config = {
+        apiKey: '_0uETKZZjS8Gj3EpFLVrP9R0qO7TzfVk',
+        network: Network.ETH_MAINNET,
+      };
 
-    const alchemy = new Alchemy(config);
-    const data = await alchemy.nft.getNftsForOwner(userAddress);
-    setResults(data);
+      const alchemy = new Alchemy(config);
+      const data = await alchemy.nft.getNftsForOwner(userAddress);
+      setResults(data);
 
-    const tokenDataPromises = [];
-
-    for (let i = 0; i < data.ownedNfts.length; i++) {
-      const tokenData = alchemy.nft.getNftMetadata(
-        data.ownedNfts[i].contract.address,
-        data.ownedNfts[i].tokenId
+      const tokenDataPromises = data.ownedNfts.map((nft) =>
+        alchemy.nft.getNftMetadata(nft.contract.address, nft.tokenId)
       );
-      tokenDataPromises.push(tokenData);
-    }
 
-    setTokenDataObjects(await Promise.all(tokenDataPromises));
-    setHasQueried(true);
+      setTokenDataObjects(await Promise.all(tokenDataPromises));
+    } catch (err) {
+      setError('Failed to fetch NFTs');
+    } finally {
+      setLoading(false);
+      setHasQueried(true);
+    }
   }
+
   return (
     <Box w="100vw">
       <Center>
@@ -53,8 +74,12 @@ function App() {
             NFT Indexer 🖼
           </Heading>
           <Text>
-            Plug in an address and this website will return all of its NFTs!
+            Connect your wallet and plug in an address to see your NFTs!
           </Text>
+          <Button onClick={connectWallet} mt={36} bgColor="blue" color="white">
+            Connect Wallet
+          </Button>
+          {account && <Text mt={4}>Connected Account: {account}</Text>}
         </Flex>
       </Center>
       <Flex
@@ -73,42 +98,43 @@ function App() {
           bgColor="white"
           fontSize={24}
         />
-        <Button fontSize={20} onClick={getNFTsForOwner} mt={36} bgColor="blue">
+        <Button fontSize={20} onClick={getNFTsForOwner} mt={36} bgColor="blue" color="white">
           Fetch NFTs
         </Button>
 
         <Heading my={36}>Here are your NFTs:</Heading>
 
-        {hasQueried ? (
+        {loading && <div className="spinner"></div>}
+
+        {error && <Text color="red.500">{error}</Text>}
+
+        {hasQueried && !loading && (
           <SimpleGrid w={'90vw'} columns={4} spacing={24}>
-            {results.ownedNfts.map((e, i) => {
-              return (
-                <Flex
-                  flexDir={'column'}
-                  color="white"
-                  bg="blue"
-                  w={'20vw'}
-                  key={e.id}
-                >
-                  <Box>
-                    <b>Name:</b>{' '}
-                    {tokenDataObjects[i].title?.length === 0
-                      ? 'No Name'
-                      : tokenDataObjects[i].title}
-                  </Box>
-                  <Image
-                    src={
-                      tokenDataObjects[i]?.rawMetadata?.image ??
-                      'https://via.placeholder.com/200'
-                    }
-                    alt={'Image'}
-                  />
-                </Flex>
-              );
-            })}
+            {results.ownedNfts.map((e, i) => (
+              <Flex
+                className="nft-item"
+                flexDir={'column'}
+                color="white"
+                bg="blue"
+                w={'20vw'}
+                key={e.id}
+              >
+                <Box>
+                  <b>Name:</b>{' '}
+                  {tokenDataObjects[i]?.title?.length === 0
+                    ? 'No Name'
+                    : tokenDataObjects[i]?.title}
+                </Box>
+                <Image
+                  src={
+                    tokenDataObjects[i]?.rawMetadata?.image ??
+                    'https://via.placeholder.com/200'
+                  }
+                  alt={'Image'}
+                />
+              </Flex>
+            )}
           </SimpleGrid>
-        ) : (
-          'Please make a query! The query may take a few seconds...'
         )}
       </Flex>
     </Box>
